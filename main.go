@@ -66,19 +66,19 @@ func (rb *RingBufferImpl) Push(value int, checker Check) bool {
 	defer rb.mu.Unlock()
 
 	if !checker.Filter(value) {
-		fmt.Printf("Значение %d не прошло проверку и не будет добавлено в буфер.\n", value)
+		log(fmt.Sprintf("Значение %d не прошло проверку и не будет добавлено в буфер.\n", value))
 		return false
 	}
 
 	if rb.count == rb.size {
-		fmt.Println("Буфер переполнен!")
+		log("Буфер переполнен!")
 		return false
 	}
 
 	rb.buffer[rb.tail] = value
 	rb.tail = (rb.tail + 1) % rb.size
 	rb.count++
-	fmt.Printf("Значение %d добавлено в буфер.\n", value)
+	log(fmt.Sprintf("Значение %d добавлено в буфер.\n", value))
 	return true
 }
 
@@ -87,7 +87,7 @@ func (rb *RingBufferImpl) PopAll() []int {
 	defer rb.mu.Unlock()
 
 	if rb.count == 0 {
-		fmt.Println("Буфер пуст")
+		log("Буфер пуст")
 		return nil
 	}
 
@@ -97,31 +97,31 @@ func (rb *RingBufferImpl) PopAll() []int {
 	}
 	rb.head = (rb.head + rb.count) % rb.size
 	rb.count = 0
-	fmt.Println("Все элементы извлечены из буфера")
+	log("Все элементы извлечены из буфера")
 	return result
 }
 
 func dataSourse(out chan<- int) {
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Printf("Стадия: Ввод данных из консоли:")
+	log("Стадия: Ввод данных из консоли:")
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "exit" {
-			fmt.Printf("Команда завершения ввода получена.")
+			log("Команда завершения ввода получена.")
 			close(out)
 			break
 		}
 
 		num, err := strconv.Atoi(line)
 		if err != nil || num < -99999 || num > 99999 {
-			fmt.Printf("Некорректный ввод. Введите целое число.")
+			log("Некорректный ввод. Введите целое число.")
 			continue
 		}
 
 		out <- num
 	}
 	if err := scanner.Err(); err != nil {
-		fmt.Printf("Ошибка чтения ввода: %v", err)
+		log(fmt.Sprintf("Ошибка чтения ввода: %v", err))
 		close(out)
 	}
 }
@@ -133,7 +133,7 @@ func bufferStage(in <-chan int, out chan<- int, capacity int, interval time.Dura
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	fmt.Printf("Стадия: Буферизация данных")
+	log("Стадия: Буферизация данных")
 
 	// Флаг для завершения работы
 	done := false
@@ -145,10 +145,10 @@ func bufferStage(in <-chan int, out chan<- int, capacity int, interval time.Dura
 			select {
 			case num, ok := <-in:
 				if !ok {
-					fmt.Printf("Канал входных данных закрыт")
+					log("Канал входных данных закрыт")
 					for _, buf := range buffers {
 						data := buf.PopAll()
-						fmt.Printf("Отправка остаточных данных из буфера: %v", data)
+						log(fmt.Sprintf("Отправка остаточных данных из буфера: %v", data))
 						for _, val := range data {
 							out <- val
 						}
@@ -156,7 +156,7 @@ func bufferStage(in <-chan int, out chan<- int, capacity int, interval time.Dura
 					done = true
 					return
 				}
-				fmt.Printf("Получено число для буферизации: %d", num)
+				log(fmt.Sprintf("Получено число для буферизации: %d", num))
 				if !currentBuffer.Push(num, checker) {
 					fmt.Printf("Буфер переполнен, создается новый буфер")
 					newBuffer := NewRingBuffer(capacity)
@@ -167,7 +167,7 @@ func bufferStage(in <-chan int, out chan<- int, capacity int, interval time.Dura
 			case <-ticker.C:
 				data := currentBuffer.PopAll()
 				if len(data) > 0 {
-					fmt.Printf("Очистка буфера по таймеру: %v", data)
+					log(fmt.Sprintf("Очистка буфера по таймеру: %v", data))
 					for _, num := range data {
 						out <- num
 					}
@@ -178,11 +178,17 @@ func bufferStage(in <-chan int, out chan<- int, capacity int, interval time.Dura
 }
 
 func dataConsumer(in <-chan int) {
-	fmt.Printf("Стадия: Потребление данных")
+	log("Стадия: Потребление данных")
 	for num := range in {
-		fmt.Printf("Получены данные: %d", num)
+		log(fmt.Sprintf("Получены данные: %d", num))
 	}
-	fmt.Printf("Потребление данных завершено")
+	log("Потребление данных завершено")
+}
+
+// функция логирования действий
+func log(message string) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	fmt.Printf("[%s] %s\n", timestamp, message)
 }
 
 func main() {
@@ -211,7 +217,7 @@ func main() {
 		dataConsumer(bufferedChannel)
 	}()
 
-	fmt.Println("Для завершения программы введите 'exit' в консоли.")
+	log("Для завершения программы введите 'exit' в консоли.")
 	wg.Wait()
-	fmt.Println("Программа завершена.")
+	log("Программа завершена.")
 }
